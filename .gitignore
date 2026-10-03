@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.trello.env
+.trello_pkce
+*.db
+storage/*
+!storage/.gitkeep
+__pycache__/
+.venv/
+.pytest_cache/
+node_modules/
+dist/
