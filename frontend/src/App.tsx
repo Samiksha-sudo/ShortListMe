@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getHealth } from "./api";
+import UploadCV from "./UploadCV";
 
 export default function App() {
   const { data, error, isLoading } = useQuery({ queryKey: ["health"], queryFn: getHealth });
@@ -12,6 +13,7 @@ export default function App() {
         Backend:{" "}
         {isLoading ? "checking…" : error ? `unreachable (${(error as Error).message})` : data?.status}
       </p>
+      <UploadCV />
     </main>
   );
 }
