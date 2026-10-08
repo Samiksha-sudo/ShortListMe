@@ -5,8 +5,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
-from app.db import Base, get_db
+from app.db import Base, get_db, get_session_factory
 from app.main import app
+from app.services import rate_limiter
+
+
+def sign_in(client, email):
+    res = client.post("/v1/auth/signup", json={"email": email, "password": "correct-horse"})
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
 @pytest.fixture
@@ -24,5 +30,10 @@ def client(tmp_path, monkeypatch):
             db.close()
 
     app.dependency_overrides[get_db] = override
-    yield TestClient(app)
+    app.dependency_overrides[get_session_factory] = lambda: Session
+    rate_limiter.clear_all()
+    c = TestClient(app)
+    # Signed in as a default user; tests for other users / anonymous access build their own headers.
+    c.headers.update(sign_in(c, "default@example.com"))
+    yield c
     app.dependency_overrides.clear()

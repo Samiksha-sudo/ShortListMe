@@ -13,6 +13,11 @@ class Base(DeclarativeBase):
     pass
 
 
+def get_session_factory() -> sessionmaker:
+    """Background work can't reuse the request's session, so it gets a factory (tests override this)."""
+    return SessionLocal
+
+
 def get_db() -> Iterator[Session]:
     db = SessionLocal()
     try:

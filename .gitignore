@@ -14,3 +14,11 @@ dist/
 
 # Windows build artifacts
 *.tsbuildinfo
+
+# Local / personal files
+*.log
+*.xlsx
+README.html
+daily_timetable.html
+job_research/
+job_search/

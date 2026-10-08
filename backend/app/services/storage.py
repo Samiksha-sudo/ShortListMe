@@ -9,6 +9,13 @@ def _root() -> Path:
     return root
 
 
+def load(key: str) -> bytes:
+    path = (_root() / key).resolve()
+    if _root().resolve() not in path.parents:
+        raise ValueError("invalid storage key")
+    return path.read_bytes()
+
+
 def save(key: str, data: bytes) -> str:
     path = (_root() / key).resolve()
     if _root().resolve() not in path.parents:

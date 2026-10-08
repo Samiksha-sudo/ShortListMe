@@ -1,19 +1,71 @@
-import { useQuery } from "@tanstack/react-query";
-import { getHealth } from "./api";
-import UploadCV from "./UploadCV";
+import { useEffect, useState } from "react";
+import { logout, type AuthResult } from "./api";
+import { useRoute } from "./lib/route";
+import { WorkspaceProvider } from "./lib/store";
+import { clearSession, loadSession, saveSession } from "./session";
+import ForgotPassword from "./ForgotPassword";
+import Login from "./Login";
+import ResetPassword from "./ResetPassword";
+import SignUp from "./SignUp";
+import Dashboard, { Applications, Jobs, MyCVs, Settings } from "./pages/Dashboard";
+import Tailor from "./pages/Tailor";
+import AppShell from "./ui/AppShell";
+
+type Mode = "login" | "signup" | "forgot";
+
+// The emailed link is <site>/?reset_token=... (read-only here: StrictMode runs initialisers twice).
+const readResetToken = () => new URLSearchParams(window.location.search).get("reset_token");
+
+function clearResetTokenFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("reset_token");
+  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+
+function Workspace({ session, onSignOut }: { session: AuthResult; onSignOut: () => void }) {
+  const route = useRoute();
+  const email = session.user.email;
+  return (
+    <WorkspaceProvider userId={session.user.id}>
+      <AppShell route={route} email={email} onSignOut={onSignOut}>
+        {route === "dashboard" && <Dashboard email={email} />}
+        {route === "tailor" && <Tailor />}
+        {route === "applications" && <Applications />}
+        {route === "cvs" && <MyCVs />}
+        {route === "jobs" && <Jobs />}
+        {route === "settings" && <Settings email={email} onSignOut={onSignOut} />}
+      </AppShell>
+    </WorkspaceProvider>
+  );
+}
 
 export default function App() {
-  const { data, error, isLoading } = useQuery({ queryKey: ["health"], queryFn: getHealth });
+  const [session, setSession] = useState<AuthResult | null>(loadSession);
+  const [mode, setMode] = useState<Mode>("login");
+  const [resetToken, setResetToken] = useState<string | null>(readResetToken);
 
-  return (
-    <main style={{ fontFamily: "system-ui", maxWidth: 640, margin: "4rem auto" }}>
-      <h1>ShortlistMe</h1>
-      <p>AI-tailored CVs that match the job.</p>
-      <p>
-        Backend:{" "}
-        {isLoading ? "checking…" : error ? `unreachable (${(error as Error).message})` : data?.status}
-      </p>
-      <UploadCV />
-    </main>
-  );
+  // Keep the token out of the address bar and browser history once it's in memory.
+  useEffect(() => { if (resetToken) clearResetTokenFromUrl(); }, [resetToken]);
+
+  const start = (r: AuthResult) => { saveSession(r); setSession(r); };
+
+  if (resetToken) {
+    return <ResetPassword token={resetToken} onDone={() => { setResetToken(null); setMode("login"); }} />;
+  }
+
+  if (!session) {
+    if (mode === "signup") return <SignUp onDone={start} onSwitch={() => setMode("login")} />;
+    if (mode === "forgot") return <ForgotPassword onBack={() => setMode("login")} />;
+    return <Login onDone={start} onSwitch={() => setMode("signup")} onForgot={() => setMode("forgot")} />;
+  }
+
+  const signOut = () => {
+    // Revoke the refresh token on the server; sign out locally even if that call fails.
+    logout(session.refresh_token).catch(() => {});
+    clearSession();
+    setSession(null);
+    setMode("login");
+  };
+
+  return <Workspace session={session} onSignOut={signOut} />;
 }
