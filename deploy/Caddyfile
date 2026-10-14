@@ -1,0 +1,8 @@
+# Caddy gets and renews HTTPS certificates automatically once DNS points at this server.
+{$DOMAIN}, www.{$DOMAIN} {
+	reverse_proxy web:80
+}
+
+api.{$DOMAIN} {
+	reverse_proxy api:8000
+}

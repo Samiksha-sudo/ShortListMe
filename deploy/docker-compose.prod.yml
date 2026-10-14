@@ -1,0 +1,45 @@
+# Production stack for a single DigitalOcean Droplet.
+# Run from the repo root:  docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+services:
+  api:
+    build: ../backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////data/shortlistme.db
+      STORAGE_DIR: /data/storage
+    volumes:
+      - appdata:/data
+    expose:
+      - "8000"
+    # One instance only: the rate limiter and tailoring jobs live in memory.
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_URL: https://api.${DOMAIN}
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+volumes:
+  appdata:
+  caddy_data:
+  caddy_config:
