@@ -23,3 +23,10 @@ def save(key: str, data: bytes) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return key
+
+
+def delete(key: str) -> None:
+    path = (_root() / key).resolve()
+    if _root().resolve() not in path.parents:
+        raise ValueError("invalid storage key")
+    path.unlink(missing_ok=True)

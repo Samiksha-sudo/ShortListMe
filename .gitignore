@@ -22,3 +22,7 @@ README.html
 daily_timetable.html
 job_research/
 job_search/
+
+# Playwright
+test-results/
+playwright-report/

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { go, type Route } from "../lib/route";
 import Icon, { type IconName } from "./Icon";
 import { Button } from "./primitives";
+import { LegalLinks } from "../Legal";
 
 const NAV: { route: Route; label: string; icon: IconName }[] = [
   { route: "dashboard", label: "Dashboard", icon: "dashboard" },
@@ -13,7 +14,7 @@ const NAV: { route: Route; label: string; icon: IconName }[] = [
 ];
 
 export function SiteFooter() {
-  return <footer className="site-footer">Design by Samiksha Kad</footer>;
+  return <footer className="site-footer">Design by Samiksha Kad · <LegalLinks /></footer>;
 }
 
 export function Logo({ light }: { light?: boolean }) {

@@ -11,7 +11,7 @@ export class ApiError extends Error {
 
 const NETWORK_MESSAGE = "ShortlistMe couldn't reach the server. Check your connection and try again.";
 
-const isAuthPath = (path: string) => path.startsWith("/v1/auth/");
+const isAuthPath = (path: string) => path.startsWith("/v1/auth/") && path !== "/v1/auth/account";
 
 function withToken(init: RequestInit | undefined, token: string): RequestInit {
   return { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` } };
@@ -264,3 +264,11 @@ export const startCheckout = () =>
 
 export const openPortal = () =>
   postJSON<{ url: string }>("/v1/billing/portal", {}, "Could not open subscription settings");
+
+export async function deleteAccount(password: string): Promise<void> {
+  await send("/v1/auth/account", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  }, "Couldn't delete your account");
+}

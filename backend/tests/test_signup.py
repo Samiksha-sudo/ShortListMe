@@ -46,3 +46,14 @@ def test_bad_email_rejected(client):
     res = signup(client, email="not-an-email")
     assert res.status_code == 422
     assert "valid email" in res.text
+
+
+def test_delete_account_erases_user_and_data(client):
+    from tests import samples
+    from tests.test_upload_cv import post
+    cv_id = post(client, "cv.docx", samples.single_column()).json()["cv_id"]
+    assert client.request("DELETE", "/v1/auth/account", json={"password": "wrong-password"}).status_code == 403
+    assert client.request("DELETE", "/v1/auth/account", json={"password": "correct-horse"}).status_code == 204
+    assert client.get(f"/v1/cvs/{cv_id}").status_code == 401  # token no longer maps to a user
+    login = client.post("/v1/auth/login", json={"email": "default@example.com", "password": "correct-horse"})
+    assert login.status_code == 401

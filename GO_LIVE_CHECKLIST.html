@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShortlistMe: Go-Live Checklist</title>
+<style>
+  :root { --bg:#07080c; --card:#10121a; --line:rgba(255,255,255,.1); --text:#f2f3f7; --muted:#9aa0b2; --brand:#ff8a55; --ok:#3ddc97; --bad:#ff6b57; --warn:#ffb347; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",Helvetica,Arial,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+  header { padding:40px 24px 30px; background:radial-gradient(700px 300px at 85% -20%,rgba(86,98,255,.4),transparent 70%),radial-gradient(600px 300px at 0% 120%,rgba(255,122,69,.35),transparent 70%); }
+  header .in, main, .progress .in { max-width:920px; margin:0 auto; }
+  header h1 { margin:0 0 6px; font-size:32px; font-weight:400; }
+  header p { margin:0; color:var(--muted); }
+  .progress { position:sticky; top:0; z-index:5; background:rgba(7,8,12,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:10px 24px; }
+  .progress .in { display:flex; align-items:center; gap:14px; font-size:14px; }
+  .bar { flex:1; height:10px; background:#1b1e29; border-radius:99px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:0; background:linear-gradient(90deg,#ffb48f,#ff7a45); transition:width .25s; }
+  button.reset { border:1px solid var(--line); background:transparent; color:var(--text); border-radius:99px; padding:5px 14px; cursor:pointer; font-size:13px; }
+  main { padding:24px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:22px 24px; margin-bottom:22px; }
+  h2 { margin:0 0 4px; font-size:22px; font-weight:500; }
+  h2 span { color:var(--brand); }
+  .sub { color:var(--muted); margin:0 0 14px; font-size:14px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { border-top:1px solid var(--line); }
+  li:first-child { border-top:0; }
+  label { display:flex; gap:12px; padding:12px 0; cursor:pointer; align-items:flex-start; }
+  input[type=checkbox] { width:19px; height:19px; margin-top:3px; accent-color:var(--ok); flex:none; }
+  label b { display:block; }
+  label small, label div > div { color:var(--muted); font-size:13.5px; }
+  input:checked + div b { text-decoration:line-through; color:var(--muted); }
+  ol { margin:6px 0 0 18px; padding:0; color:var(--muted); font-size:13.5px; }
+  code, pre { font-family:Consolas,monospace; background:#1a1d29; border-radius:6px; color:#ffd6c2; }
+  code { padding:1px 6px; font-size:13px; }
+  pre { padding:12px 14px; overflow:auto; font-size:13px; margin:8px 0 0; }
+  .tag { font-size:11px; font-weight:700; letter-spacing:.05em; padding:2px 9px; border-radius:99px; margin-left:8px; vertical-align:middle; }
+  .must { background:rgba(255,107,87,.18); color:var(--bad); } .should { background:rgba(255,179,71,.16); color:var(--warn); } .sec { background:rgba(122,168,255,.16); color:#9bbcff; }
+  .note { border-left:4px solid var(--brand); background:rgba(255,122,69,.08); padding:10px 14px; border-radius:8px; font-size:14px; margin-top:12px; }
+  .warn { border-left-color:var(--bad); background:rgba(255,107,87,.09); }
+  a { color:#ffb48f; }
+  footer { text-align:center; color:var(--muted); font-size:13px; padding:10px 0 40px; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>ShortlistMe: Go-Live Checklist</h1>
+  <p>Tick each box as you go. Progress is saved in this browser. <b>MUST</b> items block launch, <b>SHOULD</b> items can follow in week one.</p>
+</div></header>
+<div class="progress"><div class="in"><span id="count">0 / 0</span><div class="bar"><i id="fill"></i></div><button class="reset" id="reset">Reset</button></div></div>
+
+<main>
+
+<section>
+  <h2><span>Part 0.</span> Clean up the test payments <span class="tag must">MUST</span></h2>
+  <p class="sub">Do this first. The £1 test used your live Stripe account, so real subscriptions are still running.</p>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Cancel the first £1 subscription</b>
+      <ol><li>Stripe → Billing → Subscriptions.</li><li>Open <code>sub_1UOQXTCNcho8tq0RK1P3RAWs</code> (customer <code>cus_VPF1IsQv3YsuQM</code>).</li><li>Actions → Cancel subscription → Cancel immediately.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Cancel the second £1 subscription</b>
+      <ol><li>Same page, customer <code>cus_VPFGtgJeCulSJY</code> (the one the app saw).</li><li>Cancel immediately. With the webhook running, the account should go back to Free within seconds (<code>customer.subscription.deleted</code>).</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Refund both £1 charges</b>
+      <ol><li>Stripe → Payments → open each £1 payment from kadsamiksha1999@gmail.com.</li><li>Refund → full amount.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Archive the "ShortlistMe Launch" £1 product</b><small>Product catalogue → <code>prod_VPDnp8P3u02anL</code> → Archive, so it can't be picked by mistake.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Put your admin email back</b><small>In <code>backend/.env</code> set <code>ADMIN_EMAILS=kadsamiksha347@gmail.com</code>. It was emptied for the test, so that account can currently be charged.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 1.</span> Secrets and security <span class="tag sec">SECURITY</span></h2>
+  <p class="sub">A live secret key was pasted into a chat. Treat it as exposed.</p>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Roll the exposed live key <span class="tag must">MUST</span></b>
+      <ol><li>Stripe → Developers → API keys.</li><li>Roll the <code>sk_live_...</code> key (expire the old one immediately).</li><li>Better: create a <b>restricted key</b> with write access only to Checkout Sessions, Customer portal sessions and Customers, and read on Subscriptions.</li><li>Put the new key in the host's environment settings, never in a file you commit or paste.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Confirm no <code>.env</code> is committed <span class="tag must">MUST</span></b>
+      <pre>cd C:\Users\User\shortlistme
+git ls-files | findstr /i "\.env"
+git log --all --oneline -- .env backend/.env</pre>
+      <small>The first command should list only <code>.env.example</code>. If a real <code>.env</code> was ever committed, rotate every key in it (Gemini, OpenAI, Stripe).</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Set a strong JWT secret <span class="tag must">MUST</span></b><small>The built-in default is public, so anyone could forge logins.</small>
+      <pre>python -c "import secrets;print(secrets.token_urlsafe(48))"</pre></div></label></li>
+    <li><label><input type="checkbox"><div><b>Rotate the Gemini and OpenAI keys if they were ever shared <span class="tag should">SHOULD</span></b><small>Use a paid Gemini key: the free tier lets Google use submitted CVs to improve its products. Pin <code>GEMINI_MODEL</code> so cost stays stable.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 2.</span> Stripe live mode <span class="tag must">MUST</span></h2>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Decide which Stripe account to use</b><small>The live account is named <code>campustocorporate</code>, and that name shows on Checkout and receipts. For a clean brand, create a separate account named ShortlistMe (Stripe → account menu → New account) and repeat the steps below in it.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Confirm the £20 price exists</b><small>Product "ShortlistMe Pro", £20.00 GBP monthly: <code>price_1UOPMcCNcho8tq0RDSXml8sF</code>. Set it as <code>STRIPE_PRICE_ID</code>. (Already done locally.)</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Turn on the Customer Portal</b>
+      <ol><li>Stripe → Settings → Billing → Customer portal.</li><li>Enable: cancel subscriptions, update payment method, view invoices.</li><li>Save. Without this, "Manage subscription" fails.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Add the live webhook endpoint (after Part 4)</b>
+      <ol><li>Stripe → Developers → Webhooks → Add endpoint.</li><li>URL: <code>https://api.YOURDOMAIN/v1/billing/webhook</code></li><li>Events: <code>checkout.session.completed</code>, <code>customer.subscription.created</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>.</li><li>Copy the endpoint's signing secret (<code>whsec_...</code>) into <code>STRIPE_WEBHOOK_SECRET</code> on the host. It is different from the one <code>stripe listen</code> printed.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Stop using <code>stripe listen</code></b><small>It was for local testing only. Close that terminal once the real endpoint works.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Set receipt and branding details</b><small>Stripe → Settings → Branding (name, logo, colours) and Customer emails (send receipts). Add a support email.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 3.</span> Legal and data <span class="tag must">MUST</span></h2>
+  <p class="sub">You store CVs, which are personal data, so UK GDPR applies.</p>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Privacy Policy and Terms pages</b><small>State who you are, what you store, how long, and that CV text is sent to Google (Gemini). Link both from the landing page footer and the sign-up form. The app has no such pages yet.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Account and CV deletion</b><small>Users have a right to erase their data. There is no delete endpoint yet, so this needs building before launch.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Refund and cancellation wording</b><small>State that Pro renews monthly and can be cancelled any time from Settings. Required for UK distance-selling rules.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>ICO data-protection fee <span class="tag should">SHOULD</span></b><small>Check whether it applies to you at ico.org.uk.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Support email and a short FAQ <span class="tag should">SHOULD</span></b></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 4.</span> Deploy the backend (Render) <span class="tag must">MUST</span></h2>
+  <p class="sub">Run <b>one</b> backend instance: the rate limiter and background jobs live in memory.</p>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Push the code to GitHub</b>
+      <ol><li>If the push was rejected, add the <code>workflow</code> scope to your token (GitHub → Settings → Developer settings).</li><li><code>git push origin main</code>, then check the Actions tab is green.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Create the service</b>
+      <ol><li>render.com → New → Web Service → pick the repo.</li><li>Root directory <code>backend</code>, runtime Docker.</li><li>Use a paid instance. The free one sleeps and kills background jobs mid-run.</li><li>Add environment variable <code>PORT=8000</code>, since the Dockerfile listens on 8000.</li></ol></div></label></li>
+    <li><label><input type="checkbox"><div><b>Add a persistent disk at <code>/data</code></b><small>1 GB is enough. Without it SQLite and uploaded CVs vanish on every restart. (Or move to managed Postgres.)</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Set environment variables</b>
+<pre>DATABASE_URL=sqlite:////data/shortlistme.db
+STORAGE_DIR=/data/storage
+JWT_SECRET=&lt;long random value&gt;
+CORS_ORIGINS=https://YOURDOMAIN
+FRONTEND_URL=https://YOURDOMAIN
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=&lt;paid key&gt;
+GEMINI_MODEL=&lt;pinned model&gt;
+MAIL_BACKEND=smtp
+SMTP_HOST=   SMTP_PORT=587   SMTP_USER=   SMTP_PASSWORD=
+MAIL_FROM=ShortlistMe &lt;no-reply@YOURDOMAIN&gt;
+ADMIN_EMAILS=kadsamiksha347@gmail.com
+STRIPE_SECRET_KEY=&lt;new restricted or rolled live key&gt;
+STRIPE_PRICE_ID=price_1UOPMcCNcho8tq0RDSXml8sF
+STRIPE_WEBHOOK_SECRET=&lt;from the live endpoint&gt;</pre></div></label></li>
+    <li><label><input type="checkbox"><div><b>Set up real email</b><small>Without SMTP, password-reset links only print to the server log. Use Resend, Postmark or Brevo, and verify your sending domain (SPF and DKIM records).</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Check health</b><small>Open <code>https://api.YOURDOMAIN/health</code>. It should return <code>{"status":"ok"}</code>. Migrations run on startup.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 5.</span> Deploy the frontend (Vercel) <span class="tag must">MUST</span></h2>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Import the repo</b><small>vercel.com → Add New → Project. Root directory <code>frontend</code>, framework Vite, build <code>npm run build</code>, output <code>dist</code>.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Set <code>VITE_API_URL=https://api.YOURDOMAIN</code></b><small>It is baked in at build time, so redeploy whenever it changes.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Run the type check before deploying</b>
+      <pre>cd frontend
+npx tsc --noEmit -p .
+npm run build</pre></div></label></li>
+    <li><label><input type="checkbox"><div><b>Load the Jost font reliably</b><small>The dark theme uses Jost from Google Fonts (set in <code>index.html</code>). Check it appears on the live site.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 6.</span> Domain and HTTPS <span class="tag must">MUST</span></h2>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Buy a domain</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>Point DNS</b><small>Root (<code>YOURDOMAIN</code>) → Vercel. <code>api.YOURDOMAIN</code> → Render. Both give HTTPS automatically.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Update the three URLs, then redeploy both</b><small><code>CORS_ORIGINS</code>, <code>FRONTEND_URL</code> (Render) and <code>VITE_API_URL</code> (Vercel). <code>FRONTEND_URL</code> also builds the Stripe success and cancel links, so a wrong value sends paying users to localhost.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 7.</span> Operations <span class="tag should">SHOULD</span></h2>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Error monitoring</b><small>Add Sentry to the backend and frontend.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Uptime check on <code>/health</code></b><small>UptimeRobot or Better Stack, with an email alert.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Daily database backups</b><small>Copy <code>/data/shortlistme.db</code> to off-site storage, and test a restore once.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Set a spend limit on the Gemini key</b><small>So a bug or abuse can't run up a bill.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Watch Stripe for failed payments</b><small>Stripe → Billing → Settings → Subscriptions and emails: turn on retries and failed-payment emails.</small></div></label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span>Part 8.</span> Final live test, in order <span class="tag must">MUST</span></h2>
+  <p class="sub">Use the real site. The payment test charges real money, so refund it afterwards.</p>
+  <ul>
+    <li><label><input type="checkbox"><div><b>Landing page loads with the animations and dark theme</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>Sign up with a new email, log out, log in</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>Forgot password: the email arrives and the link works</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>Upload a CV, add a job, tailor, review, export DOCX and PDF</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>Use all 5 free runs and confirm the paywall appears</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>Pay £20 with a real card</b><small>The Stripe dashboard should show the webhook delivery as <b>200</b>, and Settings should flip to Pro within seconds.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Open "Manage subscription", then cancel</b><small>Confirm the account returns to Free. Then refund the £20 under Payments.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Log in as kadsamiksha347@gmail.com</b><small>Should show Admin, no limits, and no upgrade button.</small></div></label></li>
+    <li><label><input type="checkbox"><div><b>Restart the Render service and confirm your data is still there</b></div></label></li>
+    <li><label><input type="checkbox"><div><b>"Design by Samiksha Kad" footer shows on every page</b></div></label></li>
+  </ul>
+  <div class="note warn"><b>Known gaps before you take real customers:</b> no privacy/terms pages, no account deletion, and the dashboard's CV and application lists are stored per browser only (another device shows nothing). Pro only shows price, cycle and card text, not the renewal date or invoices; "Manage subscription" opens Stripe for those.</div>
+</section>
+
+</main>
+<footer>Design by Samiksha Kad</footer>
+
+<script>
+  const boxes = [...document.querySelectorAll('input[type=checkbox]')];
+  const KEY = 'shortlistme-golive-v2';
+  const saved = JSON.parse(localStorage.getItem(KEY) || '[]');
+  boxes.forEach((b, i) => { b.checked = !!saved[i]; b.addEventListener('change', update); });
+  document.getElementById('reset').onclick = () => { if (confirm('Clear all ticks?')) { boxes.forEach(b => b.checked = false); update(); } };
+  function update() {
+    localStorage.setItem(KEY, JSON.stringify(boxes.map(b => b.checked)));
+    const done = boxes.filter(b => b.checked).length;
+    document.getElementById('count').textContent = done + ' / ' + boxes.length;
+    document.getElementById('fill').style.width = (done / boxes.length * 100) + '%';
+  }
+  update();
+</script>
+</body>
+</html>

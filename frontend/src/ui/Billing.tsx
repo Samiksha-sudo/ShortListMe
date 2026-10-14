@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getUsage, openPortal, startCheckout, type Usage } from "../api";
+import { go } from "../lib/route";
 import { Alert, Badge, Button, Card, CardHead, ErrorState } from "./primitives";
 
 export const PRICE = "£20";
@@ -53,6 +54,41 @@ export function QuotaReached({ message }: { message: string }) {
   );
 }
 
+const PLAN_FACTS: Record<Usage["plan"], { price: string; cycle: string; includes: string; payment: string }> = {
+  free: { price: "£0", cycle: "No billing", includes: "5 tailorings in total", payment: "No card on file" },
+  pro: { price: `${PRICE}/month`, cycle: "Monthly, renews automatically", includes: "50 tailorings per rolling 30 days", payment: "Card via Stripe (change or cancel in Manage subscription)" },
+  admin: { price: "£0", cycle: "Never billed", includes: "Unlimited tailorings", payment: "Not required" },
+};
+
+/** Dashboard card: plan, a usage bar and what the plan costs. */
+export function PlanSummary() {
+  const usage = useUsage();
+  const u = usage.data;
+  const pct = u && u.limit > 0 ? Math.min(100, Math.round((u.used / u.limit) * 100)) : 0;
+  return (
+    <Card>
+      <CardHead title="Plan and billing" subtitle={u ? PLAN_FACTS[u.plan].price : undefined}
+        action={u && <Badge tone={u.plan === "free" ? "neutral" : "success"}>{{ free: "Free", pro: "Pro", admin: "Admin" }[u.plan]}</Badge>} />
+      {usage.isError && <ErrorState title="Couldn't load your plan" message={usage.error.message} onRetry={() => void usage.refetch()} />}
+      {u && (
+        <>
+          {u.plan !== "admin" && (
+            <div className="progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={u.limit} aria-valuenow={u.used} aria-label="Tailorings used">
+              <i style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          <div className="settings-row"><span>Usage</span><b>{usageLine(u)}</b></div>
+          <div className="settings-row"><span>Included</span><b>{PLAN_FACTS[u.plan].includes}</b></div>
+          <div className="settings-row"><span>Billing</span><b>{PLAN_FACTS[u.plan].cycle}</b></div>
+          <div className="settings-row"><span>Payment method</span><b>{PLAN_FACTS[u.plan].payment}</b></div>
+          {u.plan === "free" && <div className="settings-row"><span>Upgrade for more every month.</span><UpgradeButton /></div>}
+          {u.plan === "pro" && <div className="settings-row"><span>Invoices, card and cancellation</span><Button onClick={() => go("settings")}>Manage in Settings</Button></div>}
+        </>
+      )}
+    </Card>
+  );
+}
+
 /** Settings card: plan, usage, and the upgrade / manage button. */
 export function PlanCard() {
   const qc = useQueryClient();
@@ -79,6 +115,9 @@ export function PlanCard() {
             <Badge tone={usage.data.plan === "free" ? "neutral" : "success"}>{{ free: "Free", pro: "Pro", admin: "Admin" }[usage.data.plan]}</Badge>
           </div>
           <div className="settings-row"><span>Usage</span><b>{usageLine(usage.data)}</b></div>
+          <div className="settings-row"><span>Price</span><b>{PLAN_FACTS[usage.data.plan].price}</b></div>
+          <div className="settings-row"><span>Billing</span><b>{PLAN_FACTS[usage.data.plan].cycle}</b></div>
+          <div className="settings-row"><span>Payment method</span><b>{PLAN_FACTS[usage.data.plan].payment}</b></div>
           {usage.data.plan !== "admin" && <div className="settings-row">
             <span>{usage.data.plan === "pro" ? "Change your card or cancel any time." : "Upgrade for more tailorings every month."}</span>
             {usage.data.plan === "pro"

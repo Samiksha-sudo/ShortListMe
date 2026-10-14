@@ -110,3 +110,13 @@ def apply_event(db: Session, event: dict) -> None:
         if user is not None:
             user.subscription_status = "canceled" if kind.endswith("deleted") else obj.get("status")
     db.commit()
+
+
+def delete_customer(user: User) -> None:
+    """Best effort: deleting the Stripe customer also cancels their subscriptions. Never blocks account deletion."""
+    if not user.stripe_customer_id or not settings.stripe_secret_key:
+        return
+    try:
+        httpx.delete(f"{STRIPE_API}/customers/{user.stripe_customer_id}", auth=(settings.stripe_secret_key, ""), timeout=20)
+    except httpx.HTTPError:
+        pass

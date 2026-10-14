@@ -4,13 +4,14 @@ from datetime import datetime, timedelta, timezone
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db import get_db
-from app.models import PasswordResetToken, RefreshToken, User
-from app.services import login_limiter, mailer, security
+from app.api.deps import current_user_id
+from app.models import CV, JobDescription, PasswordResetToken, RefreshToken, TailoringJob, User
+from app.services import billing, login_limiter, mailer, security, storage
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -189,3 +190,25 @@ def reset_password(body: ResetIn, db: Session = Depends(get_db)) -> MessageOut:
     db.commit()
     login_limiter.reset(user.email)
     return MessageOut(message="Your password has been updated. You can log in now.")
+
+
+class DeleteAccountIn(BaseModel):
+    password: str
+
+
+@router.delete("/account", status_code=204)
+def delete_account(body: DeleteAccountIn, user_id: str = Depends(current_user_id), db: Session = Depends(get_db)) -> None:
+    """Erase the account and everything stored for it (UK GDPR right to erasure). Requires the password."""
+    user = db.get(User, user_id)
+    if not security.verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=403, detail="That password is not correct.")
+    for cv in db.scalars(select(CV).where(CV.user_id == user_id)):
+        try:
+            storage.delete(cv.storage_key)
+        except (ValueError, OSError):
+            pass
+    billing.delete_customer(user)
+    for model in (TailoringJob, JobDescription, CV, RefreshToken, PasswordResetToken):
+        db.execute(delete(model).where(model.user_id == user_id))
+    db.delete(user)
+    db.commit()

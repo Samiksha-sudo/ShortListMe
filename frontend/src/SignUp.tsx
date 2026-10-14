@@ -38,6 +38,7 @@ export default function SignUp({ onDone, onSwitch }: {
           onChange={(e) => setPassword(e.target.value)} hint={`Minimum ${MIN_PASSWORD} characters.`}
           error={touched ? passwordError || undefined : undefined} />
 
+        <p style={{ fontSize: 13, opacity: 0.8, margin: "0 0 12px" }}>By creating an account you agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a>. Pro renews monthly and can be cancelled any time.</p>
         <Button type="submit" variant="primary" size="lg" block loading={mutation.isPending}>
           {mutation.isPending ? "Creating account…" : "Create account"}
         </Button>

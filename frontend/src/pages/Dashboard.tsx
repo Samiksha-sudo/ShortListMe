@@ -1,8 +1,10 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { deleteAccount } from "../api";
 import { firstName, formatBytes, greeting, matchBand, plural, timeAgo } from "../lib/format";
 import { go } from "../lib/route";
 import { appStatus, useWorkspace, type AppRecord } from "../lib/store";
-import { PlanCard } from "../ui/Billing";
+import { PlanCard, PlanSummary } from "../ui/Billing";
 import { PageHeader } from "../ui/AppShell";
 import Icon, { type IconName } from "../ui/Icon";
 import { Badge, Button, Card, CardHead, EmptyState, StatusBadge } from "../ui/primitives";
@@ -108,6 +110,7 @@ export default function Dashboard({ email }: { email: string }) {
         </Card>
 
         <div className="stack">
+          <PlanSummary />
           <Card>
             <CardHead title="Quick actions" />
             <div className="quick">
@@ -246,6 +249,28 @@ export function Settings({ email, onSignOut }: { email: string; onSignOut: () =>
           <Button variant="danger" icon="trash" onClick={() => { if (window.confirm("Clear everything ShortlistMe remembers on this device? Your account is not affected.")) clearAll(); }}>Clear</Button>
         </div>
       </Card>
+      <DeleteAccountCard onDeleted={() => { clearAll(); onSignOut(); }} />
     </>
+  );
+}
+
+function DeleteAccountCard({ onDeleted }: { onDeleted: () => void }) {
+  const [password, setPassword] = useState("");
+  const [open, setOpen] = useState(false);
+  const mutation = useMutation({ mutationFn: () => deleteAccount(password), onSuccess: onDeleted });
+  return (
+    <Card>
+      <CardHead title="Delete account" subtitle="Permanently erase your account, CVs, job descriptions and results, and cancel any subscription. This cannot be undone." />
+      {!open ? (
+        <div className="settings-row"><span>Your data is removed from our systems straight away.</span><Button variant="danger" icon="trash" onClick={() => setOpen(true)}>Delete account</Button></div>
+      ) : (
+        <form className="settings-row" onSubmit={(e) => { e.preventDefault(); if (password) mutation.mutate(); }}>
+          <input type="password" autoComplete="current-password" placeholder="Confirm with your password" value={password}
+            onChange={(e) => setPassword(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <Button type="submit" variant="danger" loading={mutation.isPending}>Permanently delete</Button>
+          {mutation.isError && <span role="alert" style={{ color: "var(--danger, #ff6b57)" }}>{mutation.error.message}</span>}
+        </form>
+      )}
+    </Card>
   );
 }
