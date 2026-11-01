@@ -100,9 +100,11 @@ Design decisions:
 
 ### API surface
 
+All routes are under `/v1`, except `GET /health`. Routers are listed with their path below the prefix.
+
 | Router | Endpoints |
 | --- | --- |
-| `auth` | `POST /signup`, `/login`, `/refresh`, `/logout`, `/forgot-password`, `/reset-password` |
+| `auth` | `POST /signup`, `/login`, `/refresh`, `/logout`, `/forgot-password`, `/reset-password`, `DELETE /account` |
 | `cvs` | `POST /` (upload), `GET /{id}`, `POST /{id}/export.docx`, `POST /{id}/export.pdf` |
 | `jds` | `POST /`, `GET /{id}`, `POST /{id}/analysis` |
 | `matches` | `POST /` |
@@ -145,7 +147,27 @@ step:   queued -> analysing -> matching -> rewriting -> done
 | `security` | Password hashing, access and refresh tokens |
 | `login_limiter`, `rate_limiter` | Failed-login blocking and request rate limiting |
 | `billing` | Usage counting, Stripe checkout and portal URLs, webhook signature check, applying events |
+| `background` | Run a task after the response (daemon thread, or inline in tests) |
 | `mailer`, `storage` | SMTP sending; reading and writing stored files |
+
+### Django files (`backend/`)
+
+| File | Purpose |
+| --- | --- |
+| `manage.py` | Django entry point: `migrate`, `runserver`, `createsuperuser` and so on |
+| `config/settings.py` | Django and DRF settings. Reads values from `app/core/config.py` (the `.env` file): secret key from `jwt_secret`, CORS origins, and the SQLite database from `DATABASE_URL` (the `sqlite:///` form is kept so existing `.env` files still work). Only `contenttypes`, `rest_framework`, `corsheaders` and `app` are installed: no sessions, admin or Django auth. DRF auth and permission classes are empty because auth is our own JWT check; `APPEND_SLASH` is off so routes match exactly |
+| `config/urls.py` | The route table. Every endpoint is a plain `path()` under `/v1/...` (plus `/health`) pointing at a function in `app/api/` |
+| `config/wsgi.py` | WSGI entry point that gunicorn serves (`config.wsgi:application`) |
+| `app/apps.py` | Registers the `app` package as the Django app (label `app`) |
+| `app/models/` | Django ORM models (`User`, `CV`, `JobDescription`, `JDAnalysis`, `TailoringJob`, `RefreshToken`, `PasswordResetToken`). `User`, `CV`, `JobDescription` and `TailoringJob` use UUID string keys; the token tables and `JDAnalysis` are keyed by a hash |
+| `app/migrations/0001_initial.py` | Single initial migration. It replaces the old Alembic history. The Dockerfile runs `migrate --fake-initial` at start-up, so a database created by Alembic is adopted rather than rebuilt |
+| `app/api/deps.py` | The `@endpoint(methods, auth=...)` decorator that wraps DRF's `api_view`. `auth` is `None` (public), `"user"`, `"llm"` or `"upload"`; the last two add a per-user rate limit. Also holds `current_user_id` (Bearer JWT check) and `owned` (returns a row only if it belongs to the caller, so a missing and someone else's row both answer 404) |
+| `app/api/errors.py` | `ApiError(status, detail)` and the DRF exception handler. Errors come back as `{"detail": ...}`, which is the shape the frontend reads; pydantic validation errors become `422`. `parse(Model, data)` validates a request body against a pydantic schema |
+| `app/services/background.py` | `run(fn, *args)` runs work after the response is sent, on a daemon thread, and logs any exception. When `BACKGROUND_SYNC` is set (tests) it runs inline. Tailoring jobs use it, so `POST /v1/tailoring` can return `202` straight away |
+| `pytest.ini` | Points pytest-django at `config.settings` |
+| `tests/client.py` | httpx-style wrapper over Django's test client, so tests read as plain HTTP calls |
+
+Request flow: gunicorn -> `config.wsgi` -> `config/urls.py` -> an `@endpoint` view in `app/api/` -> `app/services/` -> Django ORM. Pydantic is still used for request and response schemas (`app/schemas`) and for validating LLM output.
 
 ### Frontend
 
