@@ -16,7 +16,7 @@ AI-assisted CV tailoring: upload a CV, paste a job description, and get a versio
 
 | Layer | Technology |
 | --- | --- |
-| Backend | FastAPI, SQLAlchemy, Alembic |
+| Backend | Django 5.2, Django REST Framework, Django migrations (gunicorn in production) |
 | Frontend | Vite, React, TypeScript |
 | AI | Gemini or OpenAI, configured by environment variable |
 | Payments | Stripe |
@@ -27,10 +27,13 @@ AI-assisted CV tailoring: upload a CV, paste a job description, and get a versio
 
 ```
 backend/
+  manage.py
+  config/       Django settings, urls, wsgi
   app/
     api/        auth, billing, cvs, jds, matches, rewrites, tailoring, health
     services/
     models/
+    migrations/ Django migrations
 frontend/
   src/          pages and UI components
 docker-compose.yml
@@ -48,17 +51,30 @@ docker-compose.yml
 
 3. API: http://localhost:8000 · Web app: http://localhost:5173
 
+Database migrations run automatically when the backend container starts (`python manage.py migrate`). To run the backend without Docker:
+
+```bash
+cd backend
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 8000
+```
+
+## Migration note
+
+The backend was migrated from FastAPI, SQLAlchemy and Alembic to Django and Django REST Framework. The REST API paths are unchanged, the Alembic history was replaced by `app/migrations/0001_initial.py`, and the Dockerfile now serves `config.wsgi` with gunicorn.
+
 ## Tests
 
-The backend has a test suite (152 tests). Run it from `backend/` with `pytest`.
+The backend has a test suite (152 tests). Run it from `backend/` with `pytest` (uses `pytest-django`, configured in `pytest.ini`).
 
 ## High-level design (HLD)
 
 ```mermaid
 flowchart LR
     U[User browser] --> W[Web app<br/>Vite + React + TS]
-    W -->|REST /JSON| A[API<br/>FastAPI]
-    A --> DB[(SQL database<br/>SQLAlchemy + Alembic)]
+    W -->|REST /JSON| A[API<br/>Django + DRF]
+    A --> DB[(SQL database<br/>Django ORM + migrations)]
     A --> FS[(File storage<br/>uploaded CVs)]
     A -->|prompts| L[LLM provider<br/>Gemini or OpenAI]
     A -->|checkout, portal| S[Stripe]
