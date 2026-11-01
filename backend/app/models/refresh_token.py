@@ -1,16 +1,15 @@
-from datetime import datetime, timezone
+from django.db import models
+from django.utils import timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db import Base
+from app.models.user import User
 
 
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
-
+class RefreshToken(models.Model):
     # sha256 of the token, so a leaked database does not leak usable tokens
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    token_hash = models.CharField(max_length=64, primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column="user_id")
+    revoked = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "refresh_tokens"

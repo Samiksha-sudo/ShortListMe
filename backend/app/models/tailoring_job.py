@@ -1,27 +1,25 @@
-import uuid
-from datetime import datetime, timezone
+from django.db import models
+from django.utils import timezone
 
-from sqlalchemy import ForeignKey, JSON, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db import Base
+from app.models.user import User, new_id
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
+class TailoringJob(models.Model):
+    id = models.CharField(max_length=36, primary_key=True, default=new_id)
+    # null only for rows created before accounts existed; those are owned by nobody and unreachable
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.CASCADE, db_column="user_id")
+    cv_id = models.CharField(max_length=36)
+    jd_id = models.CharField(max_length=36)
+    status = models.CharField(max_length=16, default="queued")  # queued | running | done | failed
+    step = models.CharField(max_length=16, default="queued")  # queued | analysing | matching | rewriting | done
+    error = models.CharField(max_length=500, null=True, blank=True)
+    result = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
 
+    class Meta:
+        db_table = "tailoring_jobs"
 
-class TailoringJob(Base):
-    __tablename__ = "tailoring_jobs"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    # nullable only for rows created before accounts existed; those are owned by nobody and unreachable
-    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=True)
-    cv_id: Mapped[str] = mapped_column(String(36))
-    jd_id: Mapped[str] = mapped_column(String(36))
-    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | done | failed
-    step: Mapped[str] = mapped_column(String(16), default="queued")  # queued | analysing | matching | rewriting | done
-    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    def save(self, *args, **kwargs):
+        self.updated_at = timezone.now()
+        super().save(*args, **kwargs)

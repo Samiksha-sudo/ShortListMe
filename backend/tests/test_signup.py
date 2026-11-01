@@ -1,8 +1,6 @@
 import jwt
 
 from app.core.config import settings
-from app.db import get_db
-from app.main import app
 from app.models import User
 
 
@@ -24,8 +22,7 @@ def test_signup_returns_tokens_and_user(client):
 
 def test_password_is_stored_hashed(client):
     signup(client, password="correct-horse")
-    db = next(app.dependency_overrides[get_db]())
-    user = db.query(User).filter_by(email="jane@example.com").one()
+    user = User.objects.get(email="jane@example.com")
     assert user.password_hash != "correct-horse" and user.password_hash.startswith("$argon2")
 
 

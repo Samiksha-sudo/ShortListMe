@@ -1,50 +1,41 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from django.http import HttpResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from rest_framework.response import Response
 
-from app.api.deps import current_user_id, owned, upload_user
-from app.db import get_db
+from app.api.deps import endpoint, owned
+from app.api.errors import ApiError, parse
 from app.models import CV
 from app.schemas.cv import ParsedCV
 from app.services import exporting, storage
-from app.services.parsing.docx_parser import parse_docx
 from app.services.docx_validation import DOCX_MIME, MAX_BYTES, InvalidCV, validate_docx
-
-router = APIRouter(prefix="/v1/cvs", tags=["cvs"])
-
-
-class CVOut(BaseModel):
-    cv_id: str
-    filename: str
-    size: int
-    blocks: int
-    editable: int
+from app.services.parsing.docx_parser import parse_docx
 
 
-@router.post("", status_code=201, response_model=CVOut)
-async def upload_cv(file: UploadFile, db: Session = Depends(get_db),
-                    user_id: str = Depends(upload_user)) -> CVOut:
-    data = await file.read(MAX_BYTES + 1)
-    filename = file.filename or "cv.docx"
+@endpoint(["POST"], auth="upload")
+def upload_cv(request, user_id):
+    file = request.FILES.get("file")
+    if file is None:
+        raise ApiError(422, [{"loc": ["body", "file"], "msg": "Field required", "type": "missing"}])
+    data = file.read(MAX_BYTES + 1)
+    filename = file.name or "cv.docx"
     try:
         validate_docx(filename, data)
     except InvalidCV as e:
-        raise HTTPException(status_code=422, detail=str(e)) from None
+        raise ApiError(422, str(e)) from None
 
     cv_id = str(uuid.uuid4())
     try:
         parsed = parse_docx(data, cv_id, filename)
     except InvalidCV as e:
-        raise HTTPException(status_code=422, detail=str(e)) from None
+        raise ApiError(422, str(e)) from None
 
     key = storage.save(f"cvs/{cv_id}.docx", data)
-    db.add(CV(id=cv_id, user_id=user_id, filename=filename[:255], mime=DOCX_MIME, size=len(data), storage_key=key,
-              parsed=parsed.model_dump(mode="json")))
-    db.commit()
-    return CVOut(cv_id=cv_id, filename=filename, size=len(data),
-                 blocks=len(parsed.blocks), editable=sum(b.editable for b in parsed.blocks))
+    CV.objects.create(id=cv_id, user_id=user_id, filename=filename[:255], mime=DOCX_MIME, size=len(data),
+                      storage_key=key, parsed=parsed.model_dump(mode="json"))
+    return Response({"cv_id": cv_id, "filename": filename, "size": len(data), "blocks": len(parsed.blocks),
+                     "editable": sum(b.editable for b in parsed.blocks)}, status=201)
 
 
 class ExportIn(BaseModel):
@@ -52,46 +43,47 @@ class ExportIn(BaseModel):
     edits: dict[str, str] = {}
 
 
-@router.post("/{cv_id}/export.docx")
-def export_docx(cv_id: str, body: ExportIn, db: Session = Depends(get_db),
-                user_id: str = Depends(current_user_id)) -> Response:
-    cv = owned(db, CV, cv_id, user_id)
+def _parsed_cv(cv_id: str, user_id: str) -> tuple[CV, ParsedCV]:
+    cv = owned(CV, cv_id, user_id)
     if cv is None or cv.parsed is None:
-        raise HTTPException(status_code=404, detail="CV not found.")
-    parsed = ParsedCV.model_validate(cv.parsed)
+        raise ApiError(404, "CV not found.")
+    return cv, ParsedCV.model_validate(cv.parsed)
+
+
+def _download(data: bytes, media_type: str, cv: CV, suffix: str) -> HttpResponse:
+    stem = cv.filename.rsplit(".", 1)[0] or "cv"
+    return HttpResponse(data, content_type=media_type,
+                        headers={"Content-Disposition": f'attachment; filename="{stem}-tailored.{suffix}"'})
+
+
+@endpoint(["POST"])
+def export_docx(request, user_id, cv_id):
+    cv, parsed = _parsed_cv(cv_id, user_id)
+    body = parse(ExportIn, request.data)
     try:
         original = storage.load(cv.storage_key)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="The original CV file is no longer available.") from None
+        raise ApiError(404, "The original CV file is no longer available.") from None
     try:
         edits = exporting.resolve_edits(parsed, body.edits)
         data = exporting.apply_edits(original, parsed, edits)
     except exporting.ExportError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from None
-    stem = cv.filename.rsplit(".", 1)[0] or "cv"
-    return Response(content=data, media_type=DOCX_MIME,
-                    headers={"Content-Disposition": f'attachment; filename="{stem}-tailored.docx"'})
+        raise ApiError(422, str(e)) from None
+    return _download(data, DOCX_MIME, cv, "docx")
 
 
-@router.post("/{cv_id}/export.pdf")
-def export_pdf(cv_id: str, body: ExportIn, db: Session = Depends(get_db),
-                user_id: str = Depends(current_user_id)) -> Response:
-    cv = owned(db, CV, cv_id, user_id)
-    if cv is None or cv.parsed is None:
-        raise HTTPException(status_code=404, detail="CV not found.")
-    parsed = ParsedCV.model_validate(cv.parsed)
+@endpoint(["POST"])
+def export_pdf(request, user_id, cv_id):
+    cv, parsed = _parsed_cv(cv_id, user_id)
+    body = parse(ExportIn, request.data)
     try:
         data = exporting.render_pdf(parsed, exporting.resolve_edits(parsed, body.edits))
     except exporting.ExportError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from None
-    stem = cv.filename.rsplit(".", 1)[0] or "cv"
-    return Response(content=data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{stem}-tailored.pdf"'})
+        raise ApiError(422, str(e)) from None
+    return _download(data, "application/pdf", cv, "pdf")
 
 
-@router.get("/{cv_id}", response_model=ParsedCV)
-def get_cv(cv_id: str, db: Session = Depends(get_db), user_id: str = Depends(current_user_id)) -> ParsedCV:
-    cv = owned(db, CV, cv_id, user_id)
-    if cv is None or cv.parsed is None:
-        raise HTTPException(status_code=404, detail="CV not found.")
-    return ParsedCV.model_validate(cv.parsed)
+@endpoint(["GET"])
+def get_cv(request, user_id, cv_id):
+    _, parsed = _parsed_cv(cv_id, user_id)
+    return Response(parsed.model_dump(mode="json"))

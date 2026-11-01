@@ -1,5 +1,3 @@
-from sqlalchemy.orm import Session
-
 from app.models import JDAnalysis, JobDescription
 from app.schemas.jd import JDAnalysisResult
 from app.services import llm
@@ -23,12 +21,11 @@ PROMPT = """Read the job description and return JSON with exactly these keys:
 </job_description>"""
 
 
-def analyse(db: Session, jd: JobDescription) -> tuple[JDAnalysisResult, bool]:
+def analyse(jd: JobDescription) -> tuple[JDAnalysisResult, bool]:
     """Return (analysis, cached). Identical JD text is only ever sent to the model once."""
-    hit = db.get(JDAnalysis, jd.text_hash)
+    hit = JDAnalysis.objects.filter(pk=jd.text_hash).first()
     if hit is not None:
         return JDAnalysisResult.model_validate(hit.analysis), True
     result = llm.generate_model(PROMPT.format(text=jd.text), JDAnalysisResult, system=SYSTEM)
-    db.add(JDAnalysis(text_hash=jd.text_hash, analysis=result.model_dump()))
-    db.commit()
+    JDAnalysis.objects.update_or_create(text_hash=jd.text_hash, defaults={"analysis": result.model_dump()})
     return result, False

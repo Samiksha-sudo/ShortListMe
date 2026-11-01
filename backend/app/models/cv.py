@@ -1,21 +1,19 @@
-import uuid
-from datetime import datetime, timezone
+from django.db import models
+from django.utils import timezone
 
-from sqlalchemy import ForeignKey, JSON, DateTime, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db import Base
+from app.models.user import User, new_id
 
 
-class CV(Base):
-    __tablename__ = "cvs"
+class CV(models.Model):
+    id = models.CharField(max_length=36, primary_key=True, default=new_id)
+    # null only for rows created before accounts existed; those are owned by nobody and unreachable
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.CASCADE, db_column="user_id")
+    filename = models.CharField(max_length=255)
+    mime = models.CharField(max_length=100)
+    size = models.IntegerField()
+    storage_key = models.CharField(max_length=255)
+    parsed = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    # nullable only for rows created before accounts existed; those are owned by nobody and unreachable
-    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=True)
-    filename: Mapped[str] = mapped_column(String(255))
-    mime: Mapped[str] = mapped_column(String(100))
-    size: Mapped[int] = mapped_column(Integer)
-    storage_key: Mapped[str] = mapped_column(String(255))
-    parsed: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    class Meta:
+        db_table = "cvs"

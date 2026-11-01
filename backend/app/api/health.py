@@ -1,8 +1,8 @@
-from fastapi import APIRouter
+from rest_framework.response import Response
 
-router = APIRouter()
+from app.api.deps import endpoint
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+@endpoint(["GET"], auth=None)
+def health(request):
+    return Response({"status": "ok"})

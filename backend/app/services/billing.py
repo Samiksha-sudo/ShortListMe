@@ -4,8 +4,6 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import TailoringJob, User
@@ -28,22 +26,22 @@ def is_pro(user: User) -> bool:
     return user.subscription_status in ACTIVE
 
 
-def _used(db: Session, user_id: str, since: datetime | None) -> int:
+def _used(user_id: str, since: datetime | None) -> int:
     # Failed runs are free for the user: only jobs that did (or may still) produce a result count.
-    q = select(func.count()).select_from(TailoringJob).where(TailoringJob.user_id == user_id, TailoringJob.status != "failed")
+    q = TailoringJob.objects.filter(user_id=user_id).exclude(status="failed")
     if since is not None:
-        q = q.where(TailoringJob.created_at >= since)
-    return db.scalar(q) or 0
+        q = q.filter(created_at__gte=since)
+    return q.count()
 
 
-def usage(db: Session, user: User) -> dict:
+def usage(user: User) -> dict:
     if is_admin(user):  # never charged, never limited
-        return {"plan": "admin", "used": _used(db, user.id, None), "limit": 0, "remaining": 0}
+        return {"plan": "admin", "used": _used(user.id, None), "limit": 0, "remaining": 0}
     if is_pro(user):
         since = datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS)
-        limit, used = settings.pro_tailorings_per_month, _used(db, user.id, since)
+        limit, used = settings.pro_tailorings_per_month, _used(user.id, since)
     else:
-        limit, used = settings.free_tailorings, _used(db, user.id, None)
+        limit, used = settings.free_tailorings, _used(user.id, None)
     return {"plan": "pro" if is_pro(user) else "free", "used": used, "limit": limit, "remaining": max(limit - used, 0)}
 
 
@@ -59,7 +57,7 @@ def _call(method: str, path: str, data: dict) -> dict:
     return res.json()
 
 
-def checkout_url(db: Session, user: User) -> str:
+def checkout_url(user: User) -> str:
     if not settings.stripe_price_id:
         raise BillingError("Payments are not set up yet.")
     if is_admin(user):
@@ -97,19 +95,20 @@ def verify_signature(payload: bytes, header: str, now: float | None = None) -> b
     return any(hmac.compare_digest(expected, s) for s in sigs)
 
 
-def apply_event(db: Session, event: dict) -> None:
+def apply_event(event: dict) -> None:
     """Keep the user's subscription status in step with Stripe. Unknown events and users are ignored."""
     kind, obj = event.get("type", ""), event.get("data", {}).get("object", {})
     if kind == "checkout.session.completed" and obj.get("mode") == "subscription":
-        user = db.get(User, obj.get("client_reference_id") or "")
+        user = User.objects.filter(pk=obj.get("client_reference_id") or "").first()
         if user is not None:
             user.stripe_customer_id = obj.get("customer")
             user.subscription_status = "active"
+            user.save()
     elif kind in ("customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"):
-        user = db.scalar(select(User).where(User.stripe_customer_id == obj.get("customer")))
+        user = User.objects.filter(stripe_customer_id=obj.get("customer")).first()
         if user is not None:
             user.subscription_status = "canceled" if kind.endswith("deleted") else obj.get("status")
-    db.commit()
+            user.save()
 
 
 def delete_customer(user: User) -> None:

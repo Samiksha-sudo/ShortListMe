@@ -2,20 +2,22 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from sqlalchemy import delete, select, update
-from sqlalchemy.orm import Session
+from rest_framework.response import Response
 
+from app.api.deps import endpoint
+from app.api.errors import ApiError, parse
 from app.core.config import settings
-from app.db import get_db
-from app.api.deps import current_user_id
 from app.models import CV, JobDescription, PasswordResetToken, RefreshToken, TailoringJob, User
-from app.services import billing, login_limiter, mailer, security, storage
-
-router = APIRouter(prefix="/v1/auth", tags=["auth"])
+from app.services import background, billing, login_limiter, mailer, security, storage
 
 MIN_PASSWORD = 8
+
+
+def _check_password(v: str) -> str:
+    if len(v) < MIN_PASSWORD:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD} characters.")
+    return v
 
 
 class SignupIn(BaseModel):
@@ -30,23 +32,7 @@ class SignupIn(BaseModel):
         except EmailNotValidError:
             raise ValueError("Enter a valid email address.") from None
 
-    @field_validator("password")
-    @classmethod
-    def _password(cls, v: str) -> str:
-        if len(v) < MIN_PASSWORD:
-            raise ValueError(f"Password must be at least {MIN_PASSWORD} characters.")
-        return v
-
-
-class UserOut(BaseModel):
-    id: str
-    email: str
-
-
-class AuthOut(BaseModel):
-    user: UserOut
-    access_token: str
-    refresh_token: str
+    _password = field_validator("password")(classmethod(lambda cls, v: _check_password(v)))
 
 
 class LoginIn(BaseModel):
@@ -58,70 +44,6 @@ class RefreshIn(BaseModel):
     refresh_token: str
 
 
-class AccessOut(BaseModel):
-    access_token: str
-
-
-BAD_LOGIN = "Incorrect email or password."
-# Verified against when the email is unknown, so response time does not reveal whether an account exists.
-_DUMMY_HASH = security.hash_password("not-a-real-password")
-
-
-def _issue_tokens(db: Session, user: User) -> AuthOut:
-    refresh = security.create_refresh_token(user.id)
-    db.add(RefreshToken(token_hash=security.hash_token(refresh), user_id=user.id))
-    db.commit()
-    return AuthOut(user=UserOut(id=user.id, email=user.email),
-                   access_token=security.create_access_token(user.id), refresh_token=refresh)
-
-
-@router.post("/signup", status_code=201, response_model=AuthOut)
-def signup(body: SignupIn, db: Session = Depends(get_db)) -> AuthOut:
-    if db.scalar(select(User).where(User.email == body.email)) is not None:
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
-    user = User(email=body.email, password_hash=security.hash_password(body.password))
-    db.add(user)
-    db.commit()
-    return _issue_tokens(db, user)
-
-
-@router.post("/login", response_model=AuthOut)
-def login(body: LoginIn, db: Session = Depends(get_db)) -> AuthOut:
-    email = body.email.strip().lower()
-    if login_limiter.is_blocked(email):
-        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
-    user = db.scalar(select(User).where(User.email == email))
-    ok = security.verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
-    if user is None or not ok:
-        login_limiter.record_failure(email)
-        raise HTTPException(status_code=401, detail=BAD_LOGIN)
-    login_limiter.reset(email)
-    return _issue_tokens(db, user)
-
-
-def _stored_token(db: Session, token: str) -> RefreshToken | None:
-    if security.decode_token(token, "refresh") is None:
-        return None
-    row = db.get(RefreshToken, security.hash_token(token))
-    return row if row is not None and not row.revoked else None
-
-
-@router.post("/refresh", response_model=AccessOut)
-def refresh(body: RefreshIn, db: Session = Depends(get_db)) -> AccessOut:
-    row = _stored_token(db, body.refresh_token)
-    if row is None:
-        raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
-    return AccessOut(access_token=security.create_access_token(row.user_id))
-
-
-@router.post("/logout", status_code=204)
-def logout(body: RefreshIn, db: Session = Depends(get_db)) -> None:
-    row = _stored_token(db, body.refresh_token)
-    if row is not None:
-        row.revoked = True
-        db.commit()
-
-
 class ForgotIn(BaseModel):
     email: str
 
@@ -130,16 +52,71 @@ class ResetIn(BaseModel):
     token: str
     password: str
 
-    @field_validator("password")
-    @classmethod
-    def _password(cls, v: str) -> str:
-        if len(v) < MIN_PASSWORD:
-            raise ValueError(f"Password must be at least {MIN_PASSWORD} characters.")
-        return v
+    _password = field_validator("password")(classmethod(lambda cls, v: _check_password(v)))
 
 
-class MessageOut(BaseModel):
-    message: str
+class DeleteAccountIn(BaseModel):
+    password: str
+
+
+BAD_LOGIN = "Incorrect email or password."
+# Verified against when the email is unknown, so response time does not reveal whether an account exists.
+_DUMMY_HASH = security.hash_password("not-a-real-password")
+
+
+def _issue_tokens(user: User) -> dict:
+    refresh = security.create_refresh_token(user.id)
+    RefreshToken.objects.create(token_hash=security.hash_token(refresh), user_id=user.id)
+    return {"user": {"id": user.id, "email": user.email},
+            "access_token": security.create_access_token(user.id), "refresh_token": refresh}
+
+
+@endpoint(["POST"], auth=None)
+def signup(request):
+    body = parse(SignupIn, request.data)
+    if User.objects.filter(email=body.email).exists():
+        raise ApiError(409, "An account with this email already exists.")
+    user = User.objects.create(email=body.email, password_hash=security.hash_password(body.password))
+    return Response(_issue_tokens(user), status=201)
+
+
+@endpoint(["POST"], auth=None)
+def login(request):
+    body = parse(LoginIn, request.data)
+    email = body.email.strip().lower()
+    if login_limiter.is_blocked(email):
+        raise ApiError(429, "Too many failed attempts. Try again in 15 minutes.")
+    user = User.objects.filter(email=email).first()
+    ok = security.verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
+    if user is None or not ok:
+        login_limiter.record_failure(email)
+        raise ApiError(401, BAD_LOGIN)
+    login_limiter.reset(email)
+    return Response(_issue_tokens(user))
+
+
+def _stored_token(token: str) -> RefreshToken | None:
+    if security.decode_token(token, "refresh") is None:
+        return None
+    row = RefreshToken.objects.filter(pk=security.hash_token(token)).first()
+    return row if row is not None and not row.revoked else None
+
+
+@endpoint(["POST"], auth=None)
+def refresh(request):
+    row = _stored_token(parse(RefreshIn, request.data).refresh_token)
+    if row is None:
+        raise ApiError(401, "Session expired. Please log in again.")
+    return Response({"access_token": security.create_access_token(row.user_id)})
+
+
+@endpoint(["POST"], auth=None)
+def logout(request):
+    row = _stored_token(parse(RefreshIn, request.data).refresh_token)
+    if row is not None:
+        row.revoked = True
+        row.save()
+    return Response(status=204)
 
 
 FORGOT_REPLY = "If an account exists for that email, we've sent a link to reset your password."
@@ -155,60 +132,53 @@ def _send_reset_email(email: str, token: str) -> None:
     )
 
 
-@router.post("/forgot-password", status_code=202, response_model=MessageOut)
-def forgot_password(body: ForgotIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> MessageOut:
+@endpoint(["POST"], auth=None)
+def forgot_password(request):
     # Same reply whether or not the account exists, so this can't be used to find registered emails.
-    email = body.email.strip().lower()
-    user = db.scalar(select(User).where(User.email == email))
+    email = parse(ForgotIn, request.data).email.strip().lower()
+    user = User.objects.filter(email=email).first()
     if user is not None:
         # A newer request replaces any older unused link.
-        db.execute(update(PasswordResetToken)
-                   .where(PasswordResetToken.user_id == user.id, PasswordResetToken.used.is_(False))
-                   .values(used=True))
+        PasswordResetToken.objects.filter(user_id=user.id, used=False).update(used=True)
         token = secrets.token_urlsafe(32)
-        db.add(PasswordResetToken(
+        PasswordResetToken.objects.create(
             token_hash=security.hash_token(token), user_id=user.id,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.reset_token_minutes)))
-        db.commit()
-        background.add_task(_send_reset_email, user.email, token)
-    return MessageOut(message=FORGOT_REPLY)
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.reset_token_minutes))
+        background.run(_send_reset_email, user.email, token)
+    return Response({"message": FORGOT_REPLY}, status=202)
 
 
-@router.post("/reset-password", response_model=MessageOut)
-def reset_password(body: ResetIn, db: Session = Depends(get_db)) -> MessageOut:
-    row = db.get(PasswordResetToken, security.hash_token(body.token))
-    if row is None or row.used:
-        raise HTTPException(status_code=400, detail=BAD_RESET)
-    expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
-    if expires < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail=BAD_RESET)
-    user = db.get(User, row.user_id)
+@endpoint(["POST"], auth=None)
+def reset_password(request):
+    body = parse(ResetIn, request.data)
+    row = PasswordResetToken.objects.filter(pk=security.hash_token(body.token)).first()
+    if row is None or row.used or row.expires_at < datetime.now(timezone.utc):
+        raise ApiError(400, BAD_RESET)
+    user = User.objects.get(pk=row.user_id)
     user.password_hash = security.hash_password(body.password)
+    user.save()
     row.used = True
+    row.save()
     # Anyone holding an old session is signed out.
-    db.execute(update(RefreshToken).where(RefreshToken.user_id == user.id).values(revoked=True))
-    db.commit()
+    RefreshToken.objects.filter(user_id=user.id).update(revoked=True)
     login_limiter.reset(user.email)
-    return MessageOut(message="Your password has been updated. You can log in now.")
+    return Response({"message": "Your password has been updated. You can log in now."})
 
 
-class DeleteAccountIn(BaseModel):
-    password: str
-
-
-@router.delete("/account", status_code=204)
-def delete_account(body: DeleteAccountIn, user_id: str = Depends(current_user_id), db: Session = Depends(get_db)) -> None:
+@endpoint(["DELETE"])
+def delete_account(request, user_id):
     """Erase the account and everything stored for it (UK GDPR right to erasure). Requires the password."""
-    user = db.get(User, user_id)
+    body = parse(DeleteAccountIn, request.data)
+    user = User.objects.get(pk=user_id)
     if not security.verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=403, detail="That password is not correct.")
-    for cv in db.scalars(select(CV).where(CV.user_id == user_id)):
+        raise ApiError(403, "That password is not correct.")
+    for cv in CV.objects.filter(user_id=user_id):
         try:
             storage.delete(cv.storage_key)
         except (ValueError, OSError):
             pass
     billing.delete_customer(user)
     for model in (TailoringJob, JobDescription, CV, RefreshToken, PasswordResetToken):
-        db.execute(delete(model).where(model.user_id == user_id))
-    db.delete(user)
-    db.commit()
+        model.objects.filter(user_id=user_id).delete()
+    user.delete()
+    return Response(status=204)

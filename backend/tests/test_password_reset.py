@@ -3,8 +3,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.api import auth as auth_api
-from app.db import get_db
-from app.main import app
 from app.models import PasswordResetToken
 from app.services import login_limiter, mailer
 from tests.test_signup import signup
@@ -30,10 +28,6 @@ def reset(client, token, password="brand-new-pass"):
     return client.post("/v1/auth/reset-password", json={"token": token, "password": password})
 
 
-def db():
-    return next(app.dependency_overrides[get_db]())
-
-
 def test_happy_path_changes_password(client, outbox):
     signup(client)
     assert forgot(client).status_code == 202
@@ -56,7 +50,7 @@ def test_only_hash_is_stored(client, outbox):
     signup(client)
     forgot(client)
     token = token_from(outbox)
-    row = db().query(PasswordResetToken).one()
+    row = PasswordResetToken.objects.get()
     assert row.token_hash != token and token not in row.token_hash
 
 
@@ -72,10 +66,7 @@ def test_token_is_single_use(client, outbox):
 def test_expired_token_rejected(client, outbox):
     signup(client)
     forgot(client)
-    session = db()
-    row = session.query(PasswordResetToken).one()
-    row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
-    session.commit()
+    PasswordResetToken.objects.update(expires_at=datetime.now(timezone.utc) - timedelta(minutes=1))
     assert reset(client, token_from(outbox)).status_code == 400
 
 

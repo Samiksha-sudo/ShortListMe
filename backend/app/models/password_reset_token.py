@@ -1,17 +1,16 @@
-from datetime import datetime, timezone
+from django.db import models
+from django.utils import timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db import Base
+from app.models.user import User
 
 
-class PasswordResetToken(Base):
-    __tablename__ = "password_reset_tokens"
-
+class PasswordResetToken(models.Model):
     # sha256 of the emailed token; the raw token is never stored
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    used: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    token_hash = models.CharField(max_length=64, primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column="user_id")
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "password_reset_tokens"

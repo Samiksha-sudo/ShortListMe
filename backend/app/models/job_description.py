@@ -1,19 +1,17 @@
-import uuid
-from datetime import datetime, timezone
+from django.db import models
+from django.utils import timezone
 
-from sqlalchemy import ForeignKey, DateTime, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db import Base
+from app.models.user import User, new_id
 
 
-class JobDescription(Base):
-    __tablename__ = "job_descriptions"
+class JobDescription(models.Model):
+    id = models.CharField(max_length=36, primary_key=True, default=new_id)
+    # null only for rows created before accounts existed; those are owned by nobody and unreachable
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.CASCADE, db_column="user_id")
+    text = models.TextField()
+    # sha256 of the normalised text; used as the cache key for the JD analysis
+    text_hash = models.CharField(max_length=64, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    # nullable only for rows created before accounts existed; those are owned by nobody and unreachable
-    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=True)
-    text: Mapped[str] = mapped_column(Text)
-    # sha256 of the normalised text; later stories use it as the cache key for the JD analysis
-    text_hash: Mapped[str] = mapped_column(String(64), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    class Meta:
+        db_table = "job_descriptions"

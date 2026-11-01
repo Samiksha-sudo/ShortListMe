@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 180.0  # rewriting sends the whole CV, which routinely takes longer than 30s
     llm_max_retries: int = 2
 
-    # Billing: 5 free tailorings per account, then a £20/month plan (price created in the Stripe dashboard).
+    # Billing: 5 free tailorings per account, then a Â£20/month plan (price created in the Stripe dashboard).
     free_tailorings: int = 5
     pro_tailorings_per_month: int = 50
     # Comma-separated emails that use the app free of charge with no quota (the owner's own account).

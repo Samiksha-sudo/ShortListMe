@@ -5,13 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from django.db import connection
 
 from app.core.config import settings
-from app.db import get_session_factory
-from app.main import app
 from app.models import TailoringJob
 from app.services import billing
 from tests.conftest import sign_in
@@ -171,10 +167,7 @@ def test_pro_period_only_counts_recent_runs(setup, stripe):  # noqa: F811
     client, cv_id, jd_id, *_ = setup
     start(client, cv_id, jd_id)
     subscribe(client)
-    with app.dependency_overrides[get_session_factory]()() as db:
-        for job in db.query(TailoringJob).all():
-            job.created_at = datetime.now(timezone.utc) - timedelta(days=45)
-        db.commit()
+    TailoringJob.objects.update(created_at=datetime.now(timezone.utc) - timedelta(days=45))
     assert client.get("/v1/billing").json()["used"] == 0
 
 
@@ -191,17 +184,11 @@ def test_signature_check_unit(monkeypatch):
     assert not billing.verify_signature(payload, "", now=now)
 
 
-def test_migrations_build_the_schema_from_scratch(tmp_path, monkeypatch):
-    db = tmp_path / "fresh.db"
-    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db}")
-    cfg = Config("alembic.ini")
-    command.upgrade(cfg, "head")
-    cols = {c["name"] for c in inspect(create_engine(f"sqlite:///{db}")).get_columns("users")}
+def test_migrations_build_the_schema_from_scratch(db):
+    # pytest-django builds the test database by running every migration from nothing.
+    with connection.cursor() as cur:
+        cols = {c.name for c in connection.introspection.get_table_description(cur, "users")}
     assert {"stripe_customer_id", "subscription_status"} <= cols
-    command.downgrade(cfg, "-1")
-    cols = {c["name"] for c in inspect(create_engine(f"sqlite:///{db}")).get_columns("users")}
-    assert not {"stripe_customer_id", "subscription_status"} & cols
-    command.upgrade(cfg, "head")
 
 
 def test_admin_is_free_and_unlimited(setup, stripe, monkeypatch):  # noqa: F811

@@ -65,9 +65,9 @@ def test_progress_moves_through_each_step(setup, monkeypatch):
 
     real_run = tailoring.run
 
-    def run_and_learn_id(job_id, factory):
+    def run_and_learn_id(job_id):
         fake.job_id = job_id
-        real_run(job_id, factory)
+        real_run(job_id)
 
     monkeypatch.setattr(tailoring, "run", run_and_learn_id)
     start(client, cv_id, jd_id)

@@ -1,16 +1,13 @@
-from datetime import datetime, timezone
-
-from sqlalchemy import JSON, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db import Base
+from django.db import models
+from django.utils import timezone
 
 
-class JDAnalysis(Base):
+class JDAnalysis(models.Model):
     """Cache of the LLM's reading of a job description, keyed by the sha256 of its normalised text."""
 
-    __tablename__ = "jd_analyses"
+    text_hash = models.CharField(max_length=64, primary_key=True)
+    analysis = models.JSONField()
+    created_at = models.DateTimeField(default=timezone.now)
 
-    text_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    analysis: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    class Meta:
+        db_table = "jd_analyses"

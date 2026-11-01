@@ -1,8 +1,7 @@
 import pytest
-from fastapi.testclient import TestClient
+from tests.client import TestClient
 
 from app.core.config import settings
-from app.main import app
 from app.services import rate_limiter
 from tests import samples
 from tests.conftest import sign_in
@@ -17,7 +16,7 @@ def other(client):
 
 @pytest.fixture
 def anon(client):
-    return TestClient(app)
+    return TestClient()
 
 
 def test_requests_without_a_valid_token_are_401(anon):
